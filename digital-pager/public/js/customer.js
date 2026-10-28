@@ -314,39 +314,79 @@ function sameKey(buffer, bytes) {
   return a.length === bytes.length && a.every((v, i) => v === bytes[i]);
 }
 
+// The service worker and server key are prepared when the page loads, so the
+// "Notify me" tap can call subscribe() straight away. Safari on iPhone requires the
+// subscribe call to happen right inside the tap; waiting on anything first can make
+// it refuse. subscribe() also shows the permission prompt by itself.
+let pushSetup = null; // Promise<{ registration, serverKey }>
+let pushReady = null; // the same, once it has resolved
+
+function preparePush() {
+  if (!platform.pushSupported) return null;
+  if (!pushSetup) {
+    pushSetup = (async () => {
+      await navigator.serviceWorker.register('/sw.js');
+      const registration = await navigator.serviceWorker.ready;
+      const { publicKey } = await api('/api/push-key');
+      return { registration, serverKey: base64UrlToBytes(publicKey) };
+    })();
+    pushSetup.then(
+      (setup) => {
+        pushReady = setup;
+      },
+      () => {
+        pushSetup = null; // try again on the next tap
+      },
+    );
+  }
+  return pushSetup;
+}
+
+const subscribeOptions = (serverKey) => ({ userVisibleOnly: true, applicationServerKey: serverKey });
+
+function sendSubscription(subscription) {
+  return api(`${orderPath(order.number)}/subscribe`, { method: 'POST', body: JSON.stringify({ subscription: subscription.toJSON() }) });
+}
+
+// Used when permission was already granted (for an earlier order), so no tap is needed.
 async function subscribeThisOrder() {
-  const registration = await navigator.serviceWorker.register('/sw.js');
-  await navigator.serviceWorker.ready;
-  const { publicKey } = await api('/api/push-key');
-  const serverKey = base64UrlToBytes(publicKey);
+  const { registration, serverKey } = await preparePush();
   let subscription = await registration.pushManager.getSubscription();
   if (subscription && !sameKey(subscription.options?.applicationServerKey, serverKey)) {
     await subscription.unsubscribe(); // server keys changed since this phone subscribed
     subscription = null;
   }
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: serverKey });
-  }
-  await api(`${orderPath(order.number)}/subscribe`, { method: 'POST', body: JSON.stringify({ subscription: subscription.toJSON() }) });
+  if (!subscription) subscription = await registration.pushManager.subscribe(subscribeOptions(serverKey));
+  await sendSubscription(subscription);
 }
 
-async function enablePush() {
+// Must be called synchronously from the tap handler.
+function enablePush() {
   setAlertsState('working');
-  let permission;
-  try {
-    permission = await Notification.requestPermission();
-  } catch {
-    permission = Notification.permission;
-  }
-  if (permission === 'denied') return enableKeepOpen('denied');
-  if (permission !== 'granted') return setAlertsState('idle'); // dismissed the prompt
-  try {
-    await subscribeThisOrder();
-    setAlertsState('on');
-  } catch (err) {
-    console.warn('Subscribe failed', err);
-    setAlertsState('error');
-  }
+  const subscribing = pushReady
+    ? pushReady.registration.pushManager.subscribe(subscribeOptions(pushReady.serverKey))
+    : // Setup hadn't finished (very fast tap or slow network). Works on Android; an iPhone may need a second tap.
+      preparePush().then(({ registration, serverKey }) => registration.pushManager.subscribe(subscribeOptions(serverKey)));
+
+  subscribing
+    .then(sendSubscription)
+    .then(() => setAlertsState('on'))
+    .catch(async (err) => {
+      if (err?.name === 'InvalidStateError') {
+        // This phone subscribed earlier with different server keys: replace that subscription.
+        try {
+          await subscribeThisOrder();
+          return setAlertsState('on');
+        } catch (retryErr) {
+          err = retryErr;
+        }
+      }
+      const permission = Notification.permission;
+      if (permission === 'denied') return enableKeepOpen('denied');
+      if (permission === 'default' && err?.name === 'NotAllowedError') return setAlertsState('idle'); // dismissed the prompt
+      console.warn('Subscribe failed', err);
+      setAlertsState('error');
+    });
 }
 
 async function enableKeepOpen(reason = 'unsupported') {
@@ -507,7 +547,7 @@ if (platform.pushSupported) {
 // ---------- Start ----------
 
 async function init() {
-  if (platform.pushSupported) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  preparePush();
   api(`/api/branches/${branch}`)
     .then((b) => {
       pickupNote = b.pickupNote || pickupNote;

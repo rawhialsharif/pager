@@ -49,9 +49,32 @@ The tunnel address changes every time you restart `cloudflared`, so reprint/resc
 4. **Ready.** When staff tap **Mark ready**, the server encrypts a message for each phone and sends it to the phone's push service (Google's, for Chrome) with `Urgency: high`. The service worker (`public/sw.js`) shows the notification with sound and vibration. The staff screen shows how many phones were notified, or tells staff to call the number out if none were.
 5. **Picked up.** Staff tap **Picked up**; the phones' subscriptions are deleted.
 
-## iPhone behavior
+## iPhone
 
-Safari can't receive web push in a normal tab. On iPhones the page offers **Beep when it's ready** instead: it keeps the screen awake and beeps while open, and explains how to add the page to the Home Screen, which enables real notifications (iOS 16.4+). An Apple Wallet pass is the planned upgrade for locked-screen alerts on iPhone.
+Safari only delivers web push to sites added to the Home Screen (iOS 16.4 or later). So on iPhone there are two modes:
+
+- **In a Safari tab (what a scan opens):** the page offers **Beep when it's ready**. It keeps the screen awake and beeps when the order is ready, as long as the page stays open. It also shows a short guide for adding the page to the Home Screen.
+- **As a Home Screen web app:** full notifications with sound, even with the screen locked, exactly like Android. No Apple Developer account is needed, and no server changes: the same code and push keys work for both.
+
+### Test it on your iPhone
+
+1. Start the server and tunnel as in "Test on your Android phone" above.
+2. On the iPhone, scan the QR code (or open `https://<your-tunnel>/r/demo-cafe`) in Safari.
+3. Tap the Share button, then **Add to Home Screen**. On iOS 26, keep **Open as Web App** on. Tap **Add**.
+4. Open the new icon on the Home Screen. It has to be the icon, not the Safari tab.
+5. Enter the order number again (Home Screen apps don't share Safari's storage), tap **Notify me when it's ready**, then **Allow**.
+6. Lock the phone and mark the order ready on the staff dashboard.
+
+If it doesn't ring:
+
+- Check **Settings → Notifications → (your app name)**: notifications and sounds should be on.
+- A Focus mode or silent mode can hide or mute the alert.
+- The Home Screen app is tied to the address it was added from. Each new `cloudflared` address needs the app added again, so deploy to a fixed domain for real use.
+- Set `VAPID_SUBJECT` to a real `mailto:` address. Apple rejects push requests whose subject isn't a `mailto:` or URL.
+
+The server already follows Apple's push rules: tokens expire in under a day and are reused for hours rather than re-signed per message, `TTL` and `Urgency: high` are always sent, payloads are far under 4 KB, and the service worker shows every push it receives (Safari revokes permission from sites that don't). The "Notify me" tap asks for the subscription immediately, which Safari requires.
+
+For lock-screen alerts without the Home Screen step, the planned upgrade is an Apple Wallet pass. That one does need an Apple Developer Program membership and a pass signing certificate.
 
 ## Settings
 
