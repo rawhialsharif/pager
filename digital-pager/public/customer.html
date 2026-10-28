@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#eef1f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d1424" media="(prefers-color-scheme: dark)" />
+    <title>Track your order – {{BRANCH_NAME}}</title>
+    <link rel="manifest" href="/manifest/{{BRANCH_SLUG}}.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Figtree:wght@400;500;600;650;700&display=swap"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body data-branch="{{BRANCH_SLUG}}" data-status="none">
+    <main class="customer">
+      <header class="venue"><span class="venue-mark" aria-hidden="true"></span>{{BRANCH_NAME}}</header>
+
+      <!-- Step 1: enter the order number -->
+      <section class="view" id="view-enter">
+        <div class="lede">
+          <h1>Track your order</h1>
+          <p>Enter the order number printed on your receipt.</p>
+        </div>
+        <form class="enter-form" id="enter-form" novalidate>
+          <label class="field-label" for="order-input">Order number</label>
+          <input
+            class="number-input"
+            id="order-input"
+            name="number"
+            inputmode="numeric"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            maxlength="13"
+            required
+          />
+          <p class="form-error" id="enter-error" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit" id="enter-submit">Track order</button>
+        </form>
+      </section>
+
+      <!-- Step 2: the order -->
+      <section class="view" id="view-order" hidden aria-live="polite">
+        <article class="ticket" id="ticket" data-status="preparing">
+          <div class="ticket-head">
+            <span class="ticket-label">Order</span>
+            <span class="ticket-number" id="ticket-number"></span>
+          </div>
+          <div class="ticket-stub">
+            <p class="status-line"><span class="lamp" aria-hidden="true"></span><span id="status-text">Preparing</span></p>
+            <p class="eta" id="eta-main"></p>
+            <p class="eta-sub" id="eta-sub"></p>
+            <div class="progress" id="progress" aria-hidden="true"><div class="progress-bar" id="progress-bar"></div></div>
+          </div>
+        </article>
+
+        <div class="ready-message" id="ready-message" hidden>
+          <h2>Your order is ready</h2>
+          <p id="pickup-note"></p>
+          <button class="btn btn-block" type="button" id="stop-sound" hidden>Stop the sound</button>
+        </div>
+
+        <div class="alerts" id="alerts" data-state="idle">
+          <button class="btn btn-primary btn-block" type="button" id="notify-btn">Notify me when it’s ready</button>
+          <p class="help" id="notify-help"></p>
+          <details class="howto" id="ios-howto" hidden>
+            <summary>Get alerts with your screen locked</summary>
+            <ol>
+              <li>Tap the Share button in Safari.</li>
+              <li>Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li>
+              <li>Open the new icon on your Home Screen.</li>
+              <li>Enter your order number again and tap <strong>Notify me</strong>.</li>
+            </ol>
+          </details>
+        </div>
+
+        <button class="btn btn-quiet change-order" type="button" id="change-order">Track a different order</button>
+      </section>
+    </main>
+    <script type="module" src="/js/customer.js"></script>
+  </body>
+</html>

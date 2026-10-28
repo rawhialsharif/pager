@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Orders – {{BRANCH_NAME}}</title>
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Figtree:wght@400;500;600;650;700&display=swap"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body data-branch="{{BRANCH_SLUG}}">
+    <!-- PIN gate -->
+    <form class="pin-gate" id="pin-gate" hidden>
+      <header class="venue"><span class="venue-mark" aria-hidden="true"></span>{{BRANCH_NAME}}</header>
+      <h1>Staff sign in</h1>
+      <label class="field-label" for="pin-input">Staff PIN</label>
+      <input class="number-input" id="pin-input" type="password" inputmode="numeric" autocomplete="current-password" required />
+      <p class="form-error" id="pin-error" role="alert"></p>
+      <button class="btn btn-primary btn-block" type="submit">Open orders</button>
+    </form>
+
+    <!-- Dashboard -->
+    <main class="staff" id="dashboard" hidden>
+      <div class="staff-bar">
+        <header class="venue"><span class="venue-mark" aria-hidden="true"></span>{{BRANCH_NAME}}</header>
+        <span class="connection" id="connection" data-ok="true">Live</span>
+        <a class="btn btn-secondary" href="/qr/{{BRANCH_SLUG}}" target="_blank" rel="noopener">Print QR code</a>
+        <button class="btn btn-secondary" type="button" id="lock">Lock</button>
+      </div>
+
+      <form class="composer" id="composer" novalidate>
+        <div>
+          <label class="field-label" for="number-input">Order number</label>
+          <input class="number-input" id="number-input" inputmode="numeric" autocomplete="off" autocapitalize="characters" maxlength="13" required />
+        </div>
+        <fieldset class="eta-picker">
+          <legend>Ready in</legend>
+          <div class="chips" id="eta-chips"></div>
+        </fieldset>
+        <p class="form-error" id="composer-error" role="alert"></p>
+        <div class="composer-actions">
+          <button class="btn btn-secondary" type="submit" id="add-order">Add order</button>
+          <button class="btn btn-ready" type="button" id="mark-ready">Mark ready</button>
+        </div>
+      </form>
+
+      <div class="board">
+        <section class="lane" aria-labelledby="lane-preparing">
+          <h2 id="lane-preparing">Preparing <span class="count" id="count-preparing"></span></h2>
+          <ul class="lane-list" id="list-preparing"></ul>
+        </section>
+        <section class="lane" aria-labelledby="lane-ready">
+          <h2 id="lane-ready">Ready <span class="count" id="count-ready"></span></h2>
+          <ul class="lane-list" id="list-ready"></ul>
+        </section>
+        <section class="lane" aria-labelledby="lane-collected">
+          <h2 id="lane-collected">Picked up <span class="count" id="count-collected"></span></h2>
+          <ul class="lane-list" id="list-collected"></ul>
+        </section>
+      </div>
+    </main>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script type="module" src="/js/staff.js"></script>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QR code – {{BRANCH_NAME}}</title>
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Figtree:wght@400;500;600;650;700&display=swap"
+    />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body data-branch="{{BRANCH_SLUG}}" data-public-url="{{PUBLIC_URL}}">
+    <main class="poster">
+      <header class="venue"><span class="venue-mark" aria-hidden="true"></span>{{BRANCH_NAME}}</header>
+      <h1>Track your order</h1>
+      <div class="qr-frame" id="qr"></div>
+      <ol class="poster-steps">
+        <li>Scan with your phone camera.</li>
+        <li>Enter the number on your receipt.</li>
+        <li>We’ll let you know when it’s ready.</li>
+      </ol>
+      <p class="poster-url" id="qr-url"></p>
+      <div class="poster-actions">
+        <button class="btn btn-primary" type="button" id="print">Print</button>
+        <a class="btn btn-secondary" id="download" download="order-tracking-qr.svg">Download QR (SVG)</a>
+      </div>
+    </main>
+    <script type="module">
+      import { makeQr, qrToSvg } from '/js/qr.js';
+      const { branch, publicUrl } = document.body.dataset;
+      // Uses the address this page was opened at, unless PUBLIC_URL is set on the server.
+      const url = `${publicUrl || location.origin}/r/${branch}`;
+      const svg = qrToSvg(makeQr(url, { ecc: 'M' }), { title: `QR code for ${url}` });
+      document.getElementById('qr').innerHTML = svg;
+      document.getElementById('qr-url').textContent = url.replace(/^https?:\/\//, '');
+      document.getElementById('download').href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      document.getElementById('print').addEventListener('click', () => window.print());
+      if (location.protocol !== 'https:' && !publicUrl && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+        document.getElementById('qr-url').textContent += ' (not HTTPS: notifications won’t work from this address)';
+      }
+    </script>
+  </body>
+</html>

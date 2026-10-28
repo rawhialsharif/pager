@@ -1,0 +1,9 @@
+{
+  "demo-cafe": {
+    "name": "Demo Café",
+    "staffPin": "1234",
+    "defaultPrepMinutes": 12,
+    "pickupNote": "Pick it up at the counter.",
+    "requireStaffToAddOrders": false
+  }
+}
