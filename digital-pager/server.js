@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createStore, normalizeOrderNumber, customerView, staffView } from './src/store.js';
 import { createWebPush, loadOrCreateVapidKeys, isValidSubscription } from './src/webpush.js';
+import { loadBranches } from './src/branches.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -29,27 +30,6 @@ const settings = {
 };
 
 // ---------- Branches ----------
-
-function loadBranches(file) {
-  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const branches = new Map();
-  for (const [slug, b] of Object.entries(raw)) {
-    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(slug)) throw new Error(`Branch id "${slug}" must be lowercase letters, digits and dashes`);
-    if (typeof b.name !== 'string' || !b.name.trim()) throw new Error(`Branch "${slug}" needs a name`);
-    if (typeof b.staffPin !== 'string' || b.staffPin.length < 4) throw new Error(`Branch "${slug}" needs a staffPin of at least 4 characters`);
-    const prep = Number(b.defaultPrepMinutes ?? 12);
-    if (!(prep >= 1 && prep <= 180)) throw new Error(`Branch "${slug}" defaultPrepMinutes must be 1–180`);
-    branches.set(slug, {
-      slug,
-      name: b.name.trim(),
-      staffPin: b.staffPin,
-      defaultPrepMinutes: prep,
-      pickupNote: typeof b.pickupNote === 'string' && b.pickupNote.trim() ? b.pickupNote.trim() : 'Pick it up at the counter.',
-    });
-  }
-  if (!branches.size) throw new Error(`No branches defined in ${file}`);
-  return branches;
-}
 
 const branches = loadBranches(settings.configFile);
 const store = createStore({ file: path.join(settings.dataDir, 'orders.json'), timeZone: settings.timeZone });

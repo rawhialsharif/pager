@@ -77,6 +77,41 @@ Then on your laptop: stop the local server and `cloudflared` (they're no longer 
 
 This server makes its own push keys, so phones need to tap **Notify me** again (and iPhones re-add the Home Screen app). That's intended: the old keys were exposed on GitHub earlier.
 
+## Restaurants
+
+Add, rename or remove restaurants, or change staff PINs, with:
+
+```bash
+sudo bash /opt/pager/deploy/azure/restaurants.sh
+```
+
+It opens the restaurants file in an editor (in nano: Ctrl+O, Enter to save, Ctrl+X to exit). Your changes are checked first. If something's wrong, like a missing comma, it tells you the line and lets you fix it, and the live site keeps running unchanged. If the change is valid, it's applied and the app restarts. If the app doesn't come back, the previous version is restored automatically. At the end it prints each restaurant's links.
+
+Each restaurant is one section:
+
+```json
+{
+  "demo-cafe": {
+    "name": "Demo Café",
+    "staffPin": "583920",
+    "defaultPrepMinutes": 12,
+    "pickupNote": "Pick it up at the counter."
+  },
+  "kunafa-house": {
+    "name": "Kunafa House",
+    "staffPin": "771204",
+    "defaultPrepMinutes": 8,
+    "pickupNote": "Pick it up at window 2."
+  }
+}
+```
+
+- **The id** (`kunafa-house`) becomes the web address: `/r/kunafa-house` for customers, `/staff/kunafa-house` for staff, `/qr/kunafa-house` for the poster. Lowercase letters, digits and dashes only.
+- **To rename a restaurant, change `"name"` and keep the id.** Changing the id changes its address, so QR codes you've already printed for it stop working.
+- Separate restaurants with a comma, and don't put a comma after the last one.
+
+To see every restaurant and its links: `sudo bash /opt/pager/deploy/azure/restaurants.sh --list`
+
 ## Auto-deploy
 
 Push to `main` and within about a minute the server:
@@ -95,6 +130,7 @@ Push to `main` and within about a minute the server:
 | Deploy right now | `sudo systemctl start pager-update` |
 | Tunnel log | `journalctl -u pager-tunnel -n 50` |
 | Restart the app | `sudo systemctl restart pager` |
+| Add/rename restaurants, change PINs | `sudo bash /opt/pager/deploy/azure/restaurants.sh` |
 | Edit settings | `sudo nano /etc/pager/pager.env` then restart |
 
 ## Where things are

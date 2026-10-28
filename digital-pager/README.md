@@ -93,7 +93,7 @@ Restaurants (branches) live in `config/branches.json`:
 
 The key (`demo-cafe`) becomes the URL: `/r/demo-cafe`. Use lowercase letters, digits and dashes. `defaultPrepMinutes` is the ETA the staff dashboard picks by default.
 
-**Staff PINs** are stored in this file, one per restaurant. They aren't in the code or in environment variables. On a server set up with `deploy/azure/setup.sh`, the file is `/etc/pager/branches.json` (outside the repo, so real PINs never reach GitHub). After editing it, restart the app. The server compares PINs in constant time and allows 10 wrong tries per minute per address, so use at least 6 digits.
+**Staff PINs** are stored in this file, one per restaurant. They aren't in the code or in environment variables. On a server set up with `deploy/azure/setup.sh`, the file is `/etc/pager/branches.json` (outside the repo, so real PINs never reach GitHub). Edit it with `sudo bash /opt/pager/deploy/azure/restaurants.sh`, which checks the file before applying it. To check a file yourself: `node src/branches.js path/to/branches.json`. The server compares PINs in constant time and allows 10 wrong tries per minute per address, so use at least 6 digits.
 
 Environment variables:
 
