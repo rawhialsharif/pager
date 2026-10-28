@@ -43,7 +43,7 @@ The tunnel address changes every time you restart `cloudflared`, so reprint/resc
 
 ## How it works
 
-1. **Lookup.** The page sends the number to `POST /api/branches/<branch>/track`. If staff haven't added it yet, the order is created with the branch's default prep time (turn this off with `requireStaffToAddOrders`).
+1. **Lookup.** Staff add each order on the dashboard (number and ETA). The customer page sends the number to `POST /api/branches/<branch>/track`, which only looks it up: customers can never create orders. An unknown number gets "We can't find order 47. Check the number on your receipt, or ask at the counter."
 2. **Status updates.** While the page is on screen it checks the order every 3 seconds (every 5 once ready) with a tiny request that finishes in milliseconds. It stops checking while the phone is locked or the page is in the background, checks immediately when the customer comes back, and stops for good once the order is picked up. The countdown runs from the server's clock, so refreshing doesn't reset it.
 3. **Notifications.** Tapping "Notify me" asks for permission, creates a push subscription in the browser, and sends it to the server, which attaches it to that order (up to 5 phones per order).
 4. **Ready.** When staff tap **Mark ready**, the server encrypts a message for each phone and sends it to the phone's push service (Google's, for Chrome) with `Urgency: high`. The service worker (`public/sw.js`) shows the notification with sound and vibration. The staff screen shows how many phones were notified, or tells staff to call the number out if none were.
@@ -86,13 +86,14 @@ Restaurants (branches) live in `config/branches.json`:
     "name": "Demo Café",
     "staffPin": "1234",
     "defaultPrepMinutes": 12,
-    "pickupNote": "Pick it up at the counter.",
-    "requireStaffToAddOrders": false
+    "pickupNote": "Pick it up at the counter."
   }
 }
 ```
 
-The key (`demo-cafe`) becomes the URL: `/r/demo-cafe`. Use lowercase letters, digits and dashes.
+The key (`demo-cafe`) becomes the URL: `/r/demo-cafe`. Use lowercase letters, digits and dashes. `defaultPrepMinutes` is the ETA the staff dashboard picks by default.
+
+**Staff PINs** are stored in this file, one per restaurant. They aren't in the code or in environment variables. On a server set up with `deploy/azure/setup.sh`, the file is `/etc/pager/branches.json` (outside the repo, so real PINs never reach GitHub). After editing it, restart the app. The server compares PINs in constant time and allows 10 wrong tries per minute per address, so use at least 6 digits.
 
 Environment variables:
 

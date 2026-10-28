@@ -77,7 +77,7 @@ before(async () => {
     path.join(tmp, 'branches.json'),
     JSON.stringify({
       'test-cafe': { name: 'Test Café', staffPin: PIN, defaultPrepMinutes: 12, pickupNote: 'Collect at window 2.' },
-      'strict-cafe': { name: 'Strict Café', staffPin: PIN, defaultPrepMinutes: 8, requireStaffToAddOrders: true },
+      'other-cafe': { name: 'Other Café', staffPin: '9999', defaultPrepMinutes: 8 },
     }),
   );
 
@@ -174,8 +174,25 @@ test('static files cannot escape the public folder', async () => {
   }
 });
 
-test('full flow: track, subscribe, staff marks ready, push arrives', async () => {
+test('customers cannot create orders: unknown numbers are "not found"', async () => {
+  for (const number of ['46', '999', 'A12']) {
+    const res = await post('/api/branches/test-cafe/track', { number });
+    assert.equal(res.status, 404, number);
+    assert.match(res.body.error, new RegExp(`can't find order ${number}`));
+  }
+  // ...and looking them up didn't create them
+  assert.equal((await get('/api/branches/test-cafe/orders/46')).status, 404);
+  const list = await get('/api/staff/test-cafe/orders', staff);
+  assert.ok(!list.body.orders.some((o) => ['46', '999', 'A12'].includes(o.number)), 'nothing appears on the staff list');
+  // A customer can't subscribe to an order that doesn't exist either
+  assert.equal((await post('/api/branches/test-cafe/orders/46/subscribe', { subscription: fakeBrowser('/push/x').subscription })).status, 404);
+});
+
+test('full flow: staff adds order, customer tracks and subscribes, staff marks ready, push arrives', async () => {
   const t0 = Date.now();
+  const added = await post('/api/staff/test-cafe/orders', { number: '47', etaMinutes: 12 }, staff);
+  assert.equal(added.status, 200);
+
   const tracked = await post('/api/branches/test-cafe/track', { number: ' #047 ' });
   assert.equal(tracked.status, 200);
   assert.equal(tracked.body.number, '47');
@@ -245,7 +262,7 @@ test('full flow: track, subscribe, staff marks ready, push arrives', async () =>
 });
 
 test('unsubscribed phones are removed; undo and re-ready notifies again', async () => {
-  await post('/api/branches/test-cafe/track', { number: '48' });
+  await post('/api/staff/test-cafe/orders', { number: '48', etaMinutes: 10 }, staff);
   const good = fakeBrowser('/push/phone-2');
   const gone = fakeBrowser('/push/gone-phone');
   await post('/api/branches/test-cafe/orders/48/subscribe', { subscription: good.subscription });
@@ -283,12 +300,12 @@ test('staff can add orders with an ETA, or mark ready before the customer looks'
   assert.equal((await post('/api/staff/test-cafe/orders', { number: 'bad number!' }, staff)).status, 400);
 });
 
-test('branches can require staff to add orders first', async () => {
-  const unknown = await post('/api/branches/strict-cafe/track', { number: '7' });
-  assert.equal(unknown.status, 404);
-  assert.match(unknown.body.error, /can't find order 7/);
-  await post('/api/staff/strict-cafe/orders', { number: '7', etaMinutes: 8 }, staff);
-  assert.equal((await post('/api/branches/strict-cafe/track', { number: '7' })).status, 200);
+test('each restaurant has its own orders and its own PIN', async () => {
+  await post('/api/staff/test-cafe/orders', { number: '7', etaMinutes: 8 }, staff);
+  assert.equal((await post('/api/branches/test-cafe/track', { number: '7' })).status, 200);
+  assert.equal((await post('/api/branches/other-cafe/track', { number: '7' })).status, 404, "another restaurant's order 7 is separate");
+  assert.equal((await post('/api/staff/other-cafe/orders', { number: '7' }, staff)).status, 401, "test-cafe's PIN doesn't open other-cafe");
+  assert.equal((await post('/api/staff/other-cafe/orders', { number: '7' }, { 'X-Staff-Pin': '9999' })).status, 200);
 });
 
 test('status checks never hold a connection open, and a busy café on one Wi-Fi is not rate limited', async () => {

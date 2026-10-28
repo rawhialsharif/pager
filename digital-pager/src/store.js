@@ -104,15 +104,8 @@ export function createStore({ file, timeZone = 'Asia/Amman', now = () => Date.no
   }
 
   return {
+    // Only staff create orders. Customers can look up an existing order, never add one.
     find,
-
-    // Customer looked up an order. Creates it with the default prep time unless the
-    // branch requires staff to add orders first.
-    track(branch, number, { defaultPrepMinutes, allowCreate }) {
-      const existing = find(branch, number);
-      if (existing || !allowCreate) return existing;
-      return create(branch, number, { etaMinutes: defaultPrepMinutes, source: 'customer' });
-    },
 
     // Staff added an order (or changed its ETA).
     upsertFromStaff(branch, number, { etaMinutes }) {

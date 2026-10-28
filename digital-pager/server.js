@@ -45,7 +45,6 @@ function loadBranches(file) {
       staffPin: b.staffPin,
       defaultPrepMinutes: prep,
       pickupNote: typeof b.pickupNote === 'string' && b.pickupNote.trim() ? b.pickupNote.trim() : 'Pick it up at the counter.',
-      requireStaffToAddOrders: b.requireStaffToAddOrders === true,
     });
   }
   if (!branches.size) throw new Error(`No branches defined in ${file}`);
@@ -298,11 +297,9 @@ route('POST', /^\/api\/branches\/([a-z0-9-]+)\/track$/, withBranch(async (req, r
   const body = await readJson(req);
   const number = orderNumberFrom(body.number, res);
   if (!number) return;
-  const order = store.track(branch.slug, number, {
-    defaultPrepMinutes: branch.defaultPrepMinutes,
-    allowCreate: !branch.requireStaffToAddOrders,
-  });
-  if (!order) return sendError(res, 404, `We can't find order ${number} yet. Check the number on your receipt, or ask at the counter.`);
+  // Look up only: an order exists once staff add it (or mark it ready) on the dashboard.
+  const order = store.find(branch.slug, number);
+  if (!order) return sendError(res, 404, `We can't find order ${number}. Check the number on your receipt, or ask at the counter.`);
   sendJson(res, 200, customerView(order));
 }));
 

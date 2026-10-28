@@ -187,6 +187,13 @@ async function track(raw, { quiet = false } = {}) {
     startLive();
     restoreAlertsState();
   } catch (err) {
+    if (err.status === 404) {
+      // Not added by staff (or already gone): forget it so a refresh doesn't keep trying.
+      storage.remove(STORE_KEY);
+      const url = new URL(location.href);
+      url.searchParams.delete('order');
+      history.replaceState(null, '', url);
+    }
     if (quiet) showEnter();
     else els.enterError.textContent = err.status ? err.message : 'Couldn’t reach the restaurant. Check your connection and try again.';
   } finally {
@@ -560,7 +567,8 @@ async function init() {
   const candidate = fromUrl || (saved && Date.now() - saved.savedAt < REMEMBER_FOR ? saved.number : null);
   if (candidate) {
     els.input.value = candidate;
-    await track(candidate, { quiet: true });
+    // A link with ?order= shows "can't find" like a typed number; a remembered order fails silently.
+    await track(candidate, { quiet: !fromUrl });
   } else {
     showEnter();
     els.input.focus({ preventScroll: true });
