@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloudflare tunnel for the digital pager
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/cloudflared/config.yml
+
+[Service]
+ExecStart=@CLOUDFLARED@ --no-autoupdate tunnel --config /etc/cloudflared/config.yml run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

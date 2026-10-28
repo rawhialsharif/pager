@@ -1,0 +1,23 @@
+[Unit]
+Description=Digital pager web server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pager
+Group=pager
+WorkingDirectory=/opt/pager/digital-pager
+EnvironmentFile=/etc/pager/pager.env
+ExecStart=@NODE@ server.js
+Restart=always
+RestartSec=2
+
+# Hardening: the app can only write to its data folder.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/pager
+
+[Install]
+WantedBy=multi-user.target

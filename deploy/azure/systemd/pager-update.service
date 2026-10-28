@@ -1,0 +1,13 @@
+[Unit]
+Description=Deploy new GitHub commits of the digital pager (tests first)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=APP_DIR=/opt/pager
+Environment=BRANCH=main
+Environment=RUN_AS=pager
+Environment=SERVICE=pager
+Environment=STATE_DIR=/var/lib/pager
+ExecStart=/bin/bash /opt/pager/deploy/azure/update.sh
