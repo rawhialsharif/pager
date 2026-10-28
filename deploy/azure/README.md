@@ -17,7 +17,7 @@ In the [Azure portal](https://portal.azure.com), create a **Virtual machine**:
 | Name | `pager-vm` |
 | Region | One near Jordan that offers the size below (the UAE or Europe) |
 | Image | Ubuntu Server 24.04 LTS (x64) |
-| Size | **B1s** (included in the 12-month free services; the portal marks free-eligible sizes) |
+| Size | **B1s**, or if it says "not available for subscription": **B2ats_v2**, or **B2pts_v2** (Arm: pick the Ubuntu 24.04 **Arm64** image). All three get 750 free hours a month for 12 months |
 | Authentication | SSH public key, username `azureuser`. Download the private key when asked |
 | Inbound ports | **SSH (22) only.** No web ports: the tunnel connects outward, so nothing else needs to be open |
 
