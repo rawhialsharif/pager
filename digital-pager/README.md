@@ -112,9 +112,11 @@ To make new keys (for example, if the file was ever shared): stop the server, de
 
 ## Deploying
 
-Any Node.js host with HTTPS and a persistent disk works (a small VPS, Render, Railway, Fly.io, AWS Lightsail or EC2). Set `PUBLIC_URL`, `VAPID_SUBJECT` and `TRUST_PROXY=1`, and make sure `DATA_DIR` survives restarts.
+**On an Ubuntu server (Azure, AWS Lightsail, Oracle Cloud, any VPS):** follow [`deploy/azure/README.md`](../deploy/azure/README.md). One script installs everything, runs the app as a service behind a Cloudflare tunnel, and turns on auto-deploy from GitHub.
 
-It runs as a single process: orders are kept in memory and saved to `data/orders.json`. To run several servers behind a load balancer, move the store (`src/store.js`) to a database and the live updates to something like Redis pub/sub.
+**On a hosting platform** (Railway, Render, Fly.io): any Node.js host with HTTPS and a persistent disk works. Set `PUBLIC_URL`, `VAPID_SUBJECT` and `TRUST_PROXY=1`, and make sure `DATA_DIR` survives restarts.
+
+It runs as a single process: orders are kept in memory and saved to `data/orders.json`. To run several servers behind a load balancer, move the store (`src/store.js`) to a database.
 
 ## Troubleshooting
 
@@ -152,4 +154,3 @@ public/css/styles.css
 - The staff PIN is a simple shared secret per branch. Fine for a pilot; add real accounts before selling to many restaurants.
 - The page is English only. Arabic (right-to-left) is a natural next step; order numbers already accept Arabic digits.
 - Fonts load from Google Fonts. Self-host them if you want the page to work with no outside requests.
-<!-- deploy test -->
