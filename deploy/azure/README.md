@@ -21,7 +21,16 @@ In the [Azure portal](https://portal.azure.com), create a **Virtual machine**:
 | Authentication | SSH public key, username `azureuser`. Download the private key when asked |
 | Inbound ports | **SSH (22) only.** No web ports: the tunnel connects outward, so nothing else needs to be open |
 
-Leave the rest as default and create it. Then:
+On the other tabs:
+
+| Tab | Setting | Choose |
+|---|---|---|
+| Disks | OS disk size | **64 GiB (P6)**: the free services cover two 64 GB P6 SSD disks |
+| Disks | OS disk type | **Premium SSD** |
+| Networking | Delete public IP and NIC when VM is deleted | On |
+| Management | Auto-shutdown | **Off**. A pager has to stay on |
+
+Then Review + create. When it offers the key pair, choose **Download private key and create resource**: it's the only time you can download it. Afterwards:
 
 - **Set a budget alert** in Cost Management (for example $5, with an email). Azure for Students has no card attached, so it can't charge you, but the alert tells you early if something is using your credit.
 - **Optional but recommended:** in the VM's Networking settings, limit the SSH rule to your own IP address.
