@@ -108,12 +108,13 @@ export function createStore({ file, timeZone = 'Asia/Amman', now = () => Date.no
     find,
 
     // Staff added an order (or changed its ETA).
-    upsertFromStaff(branch, number, { etaMinutes }) {
+    // Returns { order, reused } on success, or { conflict } if the number is still active.
+    addFromStaff(branch, number, { etaMinutes }) {
       const existing = find(branch, number);
-      if (!existing) return create(branch, number, { etaMinutes, source: 'staff' });
-      existing.source = 'staff';
-      if (existing.status === 'preparing') existing.etaAt = now() + etaMinutes * 60_000;
-      return touch(existing);
+      if (existing && existing.status !== 'collected') return { conflict: existing };
+      // A picked-up number can be used again: it becomes a brand-new order (new id,
+      // fresh times, no phones attached) replacing the old one.
+      return { order: create(branch, number, { etaMinutes, source: 'staff' }), reused: Boolean(existing) };
     },
 
     // status: 'preparing' | 'ready' | 'collected'

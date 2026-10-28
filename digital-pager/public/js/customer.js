@@ -166,7 +166,9 @@ function applyOrder(data) {
 
 // ---------- Tracking ----------
 
-async function track(raw, { quiet = false } = {}) {
+// expectCreatedAt: set when restoring a remembered order. If the number now belongs to a
+// newer order (staff reused it after the old one was picked up), it isn't shown.
+async function track(raw, { quiet = false, expectCreatedAt = null } = {}) {
   const number = String(raw || '').trim();
   if (!number) {
     els.enterError.textContent = 'Enter the order number from your receipt.';
@@ -178,8 +180,13 @@ async function track(raw, { quiet = false } = {}) {
   els.enterSubmit.textContent = 'Finding your order…';
   try {
     const data = await api(`/api/branches/${branch}/track`, { method: 'POST', body: JSON.stringify({ number }) });
+    if (expectCreatedAt && data.createdAt !== expectCreatedAt) {
+      storage.remove(STORE_KEY); // someone else's order now has this number
+      showEnter();
+      return;
+    }
     applyOrder(data);
-    storage.set(STORE_KEY, { number: data.number, savedAt: Date.now() });
+    storage.set(STORE_KEY, { number: data.number, createdAt: data.createdAt, savedAt: Date.now() });
     const url = new URL(location.href);
     url.searchParams.set('order', data.number);
     history.replaceState(null, '', url);
@@ -214,7 +221,9 @@ async function refresh() {
   refreshing = true;
   try {
     const data = await api(orderPath(number));
-    if (order?.number === number) applyOrder(data); // ignore if they switched orders meanwhile
+    // Ignore if they switched orders meanwhile, or if the number now belongs to a newer
+    // order (reused by staff after this one was picked up).
+    if (order?.number === number && data.createdAt === order.createdAt) applyOrder(data);
   } catch (err) {
     if (err.status === 404 && order?.number === number) stopLive(); // order expired on the server
     /* otherwise offline for a moment; the next check catches up */
@@ -568,7 +577,8 @@ async function init() {
   if (candidate) {
     els.input.value = candidate;
     // A link with ?order= shows "can't find" like a typed number; a remembered order fails silently.
-    await track(candidate, { quiet: !fromUrl });
+    const remembered = saved && saved.number === candidate ? saved.createdAt : null;
+    await track(candidate, { quiet: !fromUrl, expectCreatedAt: remembered ?? null });
   } else {
     showEnter();
     els.input.focus({ preventScroll: true });

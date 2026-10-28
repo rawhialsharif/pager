@@ -300,6 +300,44 @@ test('staff can add orders with an ETA, or mark ready before the customer looks'
   assert.equal((await post('/api/staff/test-cafe/orders', { number: 'bad number!' }, staff)).status, 400);
 });
 
+test('a number in use is refused; a picked-up number starts a fresh order', async () => {
+  const first = await post('/api/staff/test-cafe/orders', { number: '60', etaMinutes: 10 }, staff);
+  assert.equal(first.status, 200);
+  assert.equal(first.body.reused, false);
+
+  // Still preparing: refused, and the original order is unchanged
+  const whilePreparing = await post('/api/staff/test-cafe/orders', { number: '60', etaMinutes: 30 }, staff);
+  assert.equal(whilePreparing.status, 409);
+  assert.match(whilePreparing.body.error, /Order 60 is already in use: it is still being prepared/);
+  assert.equal(whilePreparing.body.order.etaAt, first.body.etaAt);
+
+  // Ready: refused too
+  const phone = fakeBrowser('/push/phone-60');
+  await post('/api/branches/test-cafe/orders/60/subscribe', { subscription: phone.subscription });
+  await post('/api/staff/test-cafe/orders/60/status', { status: 'ready' }, staff);
+  const whileReady = await post('/api/staff/test-cafe/orders', { number: '60' }, staff);
+  assert.equal(whileReady.status, 409);
+  assert.match(whileReady.body.error, /is ready and waiting for pickup/);
+
+  // Picked up: typing it again starts a new order
+  await post('/api/staff/test-cafe/orders/60/status', { status: 'collected' }, staff);
+  await new Promise((r) => setTimeout(r, 5));
+  const again = await post('/api/staff/test-cafe/orders', { number: '60', etaMinutes: 15 }, staff);
+  assert.equal(again.status, 200);
+  assert.equal(again.body.reused, true);
+  assert.equal(again.body.status, 'preparing');
+  assert.equal(again.body.phones, 0, "the previous customer's phone isn't attached to the new order");
+  assert.ok(again.body.createdAt > first.body.createdAt, 'it is a new order, not the old one');
+  assert.equal((again.body.etaAt - again.body.createdAt) / 60_000, 15);
+
+  const seen = await post('/api/branches/test-cafe/track', { number: '60' });
+  assert.equal(seen.body.status, 'preparing');
+  assert.equal(seen.body.createdAt, again.body.createdAt);
+
+  const list = await get('/api/staff/test-cafe/orders', staff);
+  assert.equal(list.body.orders.filter((o) => o.number === '60').length, 1, 'only one order 60 on the board');
+});
+
 test('each restaurant has its own orders and its own PIN', async () => {
   await post('/api/staff/test-cafe/orders', { number: '7', etaMinutes: 8 }, staff);
   assert.equal((await post('/api/branches/test-cafe/track', { number: '7' })).status, 200);

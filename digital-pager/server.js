@@ -351,8 +351,15 @@ route('POST', /^\/api\/staff\/([a-z0-9-]+)\/orders$/, withStaff(async (req, res,
   if (!number) return;
   const eta = Number(body.etaMinutes ?? branch.defaultPrepMinutes);
   if (!(eta >= 0 && eta <= 180)) return sendError(res, 400, 'ETA must be between 0 and 180 minutes');
-  const order = store.upsertFromStaff(branch.slug, number, { etaMinutes: eta });
-  sendJson(res, 200, staffView(order));
+  const { order, reused, conflict } = store.addFromStaff(branch.slug, number, { etaMinutes: eta });
+  if (conflict) {
+    const where = conflict.status === 'ready' ? 'is ready and waiting for pickup' : 'is still being prepared';
+    return sendJson(res, 409, {
+      error: `Order ${number} is already in use: it ${where}. Use another number, or mark it picked up first.`,
+      order: staffView(conflict),
+    });
+  }
+  sendJson(res, 200, { ...staffView(order), reused });
 }));
 
 route('POST', /^\/api\/staff\/([a-z0-9-]+)\/orders\/([^/]+)\/status$/, withStaff(async (req, res, { branch, params }) => {

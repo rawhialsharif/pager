@@ -166,7 +166,11 @@ async function runComposer(action) {
   try {
     if (action === 'add') {
       const order = await api(`/api/staff/${branch}/orders`, { method: 'POST', body: JSON.stringify({ number, etaMinutes: selectedEta() }) });
-      toast(`Order ${order.number} added, ready in about ${selectedEta()} min.`);
+      toast(
+        order.reused
+          ? `Order ${order.number} started again (the earlier one was picked up), ready in about ${selectedEta()} min.`
+          : `Order ${order.number} added, ready in about ${selectedEta()} min.`,
+      );
       await poll();
     } else {
       await setStatus(number, 'ready');
@@ -175,6 +179,7 @@ async function runComposer(action) {
   } catch (err) {
     if (err.status === 401) return showGate('Your PIN changed or expired. Sign in again.');
     els.composerError.textContent = err.message;
+    els.toast.hidden = true; // don't leave an earlier success message next to the error
   } finally {
     buttons.forEach((b) => (b.disabled = false));
     els.numberInput.focus();
