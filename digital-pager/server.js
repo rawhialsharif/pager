@@ -60,31 +60,6 @@ if (settings.vapidSubject === 'mailto:owner@example.com') {
   console.warn('Set VAPID_SUBJECT to a real contact, e.g. mailto:you@yourdomain.com (push services use it to reach you).');
 }
 
-// ---------- Live updates (Server-Sent Events) ----------
-
-const listeners = new Map(); // order id -> Set<res>
-
-function addListener(orderId, res) {
-  if (!listeners.has(orderId)) listeners.set(orderId, new Set());
-  listeners.get(orderId).add(res);
-}
-function removeListener(orderId, res) {
-  const set = listeners.get(orderId);
-  if (!set) return;
-  set.delete(res);
-  if (!set.size) listeners.delete(orderId);
-}
-function broadcast(order) {
-  const set = listeners.get(order.id);
-  if (!set) return;
-  const msg = `data: ${JSON.stringify(customerView(order))}\n\n`;
-  for (const res of set) res.write(msg);
-}
-// Keep idle connections open through proxies and tunnels.
-setInterval(() => {
-  for (const set of listeners.values()) for (const res of set) res.write(': ping\n\n');
-}, 20_000).unref();
-
 // ---------- Push ----------
 
 async function notifyReady(branch, order) {
@@ -339,23 +314,6 @@ route('GET', /^\/api\/branches\/([a-z0-9-]+)\/orders\/([^/]+)$/, withBranch((req
   sendJson(res, 200, customerView(order));
 }));
 
-route('GET', /^\/api\/branches\/([a-z0-9-]+)\/orders\/([^/]+)\/events$/, withBranch((req, res, { branch, params }) => {
-  const number = orderNumberFrom(params[1], res);
-  if (!number) return;
-  const order = store.find(branch.slug, number);
-  if (!order) return sendError(res, 404, 'Order not found');
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-  res.write('retry: 3000\n\n');
-  res.write(`data: ${JSON.stringify(customerView(order))}\n\n`);
-  addListener(order.id, res);
-  req.on('close', () => removeListener(order.id, res));
-}));
-
 route('POST', /^\/api\/branches\/([a-z0-9-]+)\/orders\/([^/]+)\/subscribe$/, withBranch(async (req, res, { branch, params }) => {
   if (rateLimited(req, 'subscribe', 30)) return sendError(res, 429, 'Too many requests. Wait a minute and try again.');
   const number = orderNumberFrom(params[1], res);
@@ -397,7 +355,6 @@ route('POST', /^\/api\/staff\/([a-z0-9-]+)\/orders$/, withStaff(async (req, res,
   const eta = Number(body.etaMinutes ?? branch.defaultPrepMinutes);
   if (!(eta >= 0 && eta <= 180)) return sendError(res, 400, 'ETA must be between 0 and 180 minutes');
   const order = store.upsertFromStaff(branch.slug, number, { etaMinutes: eta });
-  broadcast(order);
   sendJson(res, 200, staffView(order));
 }));
 
@@ -410,7 +367,6 @@ route('POST', /^\/api\/staff\/([a-z0-9-]+)\/orders\/([^/]+)\/status$/, withStaff
   const wasReady = before?.status === 'ready';
   const order = store.setStatus(branch.slug, number, body.status, { defaultPrepMinutes: branch.defaultPrepMinutes });
   if (!order) return sendError(res, 404, `Order ${number} isn't on the list`);
-  broadcast(order);
   let pushResult = null;
   if (body.status === 'ready' && !wasReady) pushResult = await notifyReady(branch, order);
   sendJson(res, 200, { order: staffView(order), push: pushResult });
@@ -443,7 +399,6 @@ setInterval(() => store.purge(), 10 * 60_000).unref();
 
 function shutdown() {
   store.flush();
-  for (const set of listeners.values()) for (const res of set) res.end();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();
 }

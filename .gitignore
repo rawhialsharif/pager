@@ -1,0 +1,6 @@
+# Server data: orders and the private push key. Never commit these.
+data/
+
+node_modules/
+*.log
+.DS_Store

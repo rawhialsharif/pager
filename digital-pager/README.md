@@ -44,7 +44,7 @@ The tunnel address changes every time you restart `cloudflared`, so reprint/resc
 ## How it works
 
 1. **Lookup.** The page sends the number to `POST /api/branches/<branch>/track`. If staff haven't added it yet, the order is created with the branch's default prep time (turn this off with `requireStaffToAddOrders`).
-2. **Live status.** The page keeps a Server-Sent Events connection open, so status changes appear instantly. The countdown runs from the server's clock, so refreshing doesn't reset it.
+2. **Status updates.** While the page is on screen it checks the order every 3 seconds (every 5 once ready) with a tiny request that finishes in milliseconds. It stops checking while the phone is locked or the page is in the background, checks immediately when the customer comes back, and stops for good once the order is picked up. The countdown runs from the server's clock, so refreshing doesn't reset it.
 3. **Notifications.** Tapping "Notify me" asks for permission, creates a push subscription in the browser, and sends it to the server, which attaches it to that order (up to 5 phones per order).
 4. **Ready.** When staff tap **Mark ready**, the server encrypts a message for each phone and sends it to the phone's push service (Google's, for Chrome) with `Urgency: high`. The service worker (`public/sw.js`) shows the notification with sound and vibration. The staff screen shows how many phones were notified, or tells staff to call the number out if none were.
 5. **Picked up.** Staff tap **Picked up**; the phones' subscriptions are deleted.
@@ -83,13 +83,23 @@ Environment variables:
 | `DATA_DIR` | `./data` | Where orders and push keys are saved |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | (generated) | Push keys. Generated into `data/vapid.json` on first run |
 
-**Keep `data/vapid.json` secret and never lose it.** If the keys change, every phone's subscription stops working.
+**Keep `data/vapid.json` secret and never lose it.** It holds the server's private push key: anyone who has it can send notifications to your customers' phones. Never commit the `data/` folder (the repo's `.gitignore` excludes it). If the keys change, every phone has to tap "Notify me" again.
+
+To make new keys (for example, if the file was ever shared): stop the server, delete `data/vapid.json`, and start it again.
 
 ## Deploying
 
 Any Node.js host with HTTPS and a persistent disk works (a small VPS, Render, Railway, Fly.io, AWS Lightsail or EC2). Set `PUBLIC_URL`, `VAPID_SUBJECT` and `TRUST_PROXY=1`, and make sure `DATA_DIR` survives restarts.
 
 It runs as a single process: orders are kept in memory and saved to `data/orders.json`. To run several servers behind a load balancer, move the store (`src/store.js`) to a database and the live updates to something like Redis pub/sub.
+
+## Troubleshooting
+
+**`cloudflared` prints `ERR ... stream 273 canceled by remote with error code 0`.** A browser closed a request before it finished, usually because the customer left the page mid-request. Code 0 means a normal close, not a failure. Older versions of this project kept a live-updates connection open for each customer, which produced one of these lines every time someone locked their phone or switched orders. The page now uses short status checks, so you should rarely see it.
+
+**The phone never asks for notification permission.** The page must be opened over `https://` (the tunnel or your real domain), not `http://` with an IP address.
+
+**Notifications stopped after restarting.** The tunnel address changed (each `cloudflared` run gets a new one) or `data/vapid.json` was deleted. Reopen the page from the new address and tap "Notify me" again.
 
 ## Tests
 

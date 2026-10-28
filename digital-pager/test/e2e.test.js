@@ -154,42 +154,6 @@ function verifyVapid(headers, expectedAudience) {
   return m[2];
 }
 
-function openEvents(url) {
-  const messages = [];
-  const controller = new AbortController();
-  const ready = fetch(`${base}${url}`, { signal: controller.signal }).then(async (res) => {
-    assert.equal(res.status, 200);
-    const decoder = new TextDecoder();
-    let buf = '';
-    (async () => {
-      try {
-        for await (const chunk of res.body) {
-          buf += decoder.decode(chunk, { stream: true });
-          let i;
-          while ((i = buf.indexOf('\n\n')) >= 0) {
-            const block = buf.slice(0, i);
-            buf = buf.slice(i + 2);
-            const data = block.split('\n').find((l) => l.startsWith('data: '));
-            if (data) messages.push(JSON.parse(data.slice(6)));
-          }
-        }
-      } catch {
-        /* aborted */
-      }
-    })();
-  });
-  return { messages, ready, close: () => controller.abort() };
-}
-
-const waitFor = async (fn, ms = 3000) => {
-  const start = Date.now();
-  while (Date.now() - start < ms) {
-    if (fn()) return;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  throw new Error('timed out waiting');
-};
-
 test('pages render with the branch name', async () => {
   for (const p of ['/r/test-cafe', '/staff/test-cafe', '/qr/test-cafe']) {
     const res = await fetch(`${base}${p}`);
@@ -233,10 +197,8 @@ test('full flow: track, subscribe, staff marks ready, push arrives', async () =>
   assert.equal(sub.status, 200);
   assert.equal(sub.body.phones, 1);
 
-  const live = openEvents('/api/branches/test-cafe/orders/47/events');
-  await live.ready;
-  await waitFor(() => live.messages.length >= 1);
-  assert.equal(live.messages[0].status, 'preparing');
+  // What the page checks every few seconds
+  assert.equal((await get('/api/branches/test-cafe/orders/47')).body.status, 'preparing');
 
   // Staff needs the PIN
   assert.equal((await get('/api/staff/test-cafe/orders')).status, 401);
@@ -272,9 +234,10 @@ test('full flow: track, subscribe, staff marks ready, push arrives', async () =>
     );
   }
 
-  // The open page hears about it immediately
-  await waitFor(() => live.messages.some((m) => m.status === 'ready'));
-  live.close();
+  // An open page sees it on its next check
+  const polled = await get('/api/branches/test-cafe/orders/47');
+  assert.equal(polled.body.status, 'ready');
+  assert.ok(polled.body.readyAt >= t0);
 
   // Marking ready twice doesn't notify twice
   await post('/api/staff/test-cafe/orders/47/status', { status: 'ready' }, staff);
@@ -326,6 +289,17 @@ test('branches can require staff to add orders first', async () => {
   assert.match(unknown.body.error, /can't find order 7/);
   await post('/api/staff/strict-cafe/orders', { number: '7', etaMinutes: 8 }, staff);
   assert.equal((await post('/api/branches/strict-cafe/track', { number: '7' })).status, 200);
+});
+
+test('status checks never hold a connection open, and a busy café on one Wi-Fi is not rate limited', async () => {
+  // The old live-updates stream is gone: nothing is left open for a tunnel to cancel.
+  assert.equal((await fetch(`${base}/api/branches/test-cafe/orders/47/events`)).status, 404);
+
+  // 40 phones behind the same café Wi-Fi (same IP), each checking 5 times.
+  const started = Date.now();
+  const results = await Promise.all(Array.from({ length: 200 }, () => fetch(`${base}/api/branches/test-cafe/orders/47`).then((r) => r.status)));
+  assert.ok(results.every((s) => s === 200), 'every status check succeeds');
+  assert.ok(Date.now() - started < 5000, 'and they finish quickly');
 });
 
 test('orders and keys survive a restart', async () => {

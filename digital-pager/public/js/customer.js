@@ -64,7 +64,8 @@ const platform = (() => {
 
 let order = null; // latest order from the server
 let clockOffset = 0; // server clock minus phone clock
-let events = null;
+let pollTimer = null;
+let refreshing = false;
 let tickTimer = null;
 let alertsState = 'idle';
 let keepOpenReason = null;
@@ -194,31 +195,47 @@ async function track(raw, { quiet = false } = {}) {
   }
 }
 
+// Status updates: a short request every few seconds while the page is on screen.
+// Each request finishes in milliseconds, so nothing is left hanging when the customer
+// locks the phone or leaves (the notification takes over then). It also works through
+// mobile-network proxies and tunnels that buffer or cut long-lived connections.
+const POLL_EVERY = { preparing: 3000, ready: 5000 }; // collected orders stop checking
+
 async function refresh() {
-  if (!order) return;
+  if (!order || refreshing) return;
+  const number = order.number;
+  refreshing = true;
   try {
-    applyOrder(await api(orderPath(order.number)));
-  } catch {
-    /* offline for a moment; the live connection will catch up */
+    const data = await api(orderPath(number));
+    if (order?.number === number) applyOrder(data); // ignore if they switched orders meanwhile
+  } catch (err) {
+    if (err.status === 404 && order?.number === number) stopLive(); // order expired on the server
+    /* otherwise offline for a moment; the next check catches up */
+  } finally {
+    refreshing = false;
   }
+}
+
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  pollTimer = null;
+  const every = order && POLL_EVERY[order.status];
+  if (!every || document.visibilityState !== 'visible') return;
+  pollTimer = setTimeout(async () => {
+    await refresh();
+    if (pollTimer !== null) schedulePoll();
+  }, every);
 }
 
 function startLive() {
   stopLive();
-  events = new EventSource(`${orderPath(order.number)}/events`);
-  events.onmessage = (e) => {
-    try {
-      applyOrder(JSON.parse(e.data));
-    } catch {
-      /* ignore malformed message */
-    }
-  };
   tickTimer = setInterval(renderCountdown, 1000);
+  schedulePoll();
 }
 
 function stopLive() {
-  events?.close();
-  events = null;
+  clearTimeout(pollTimer);
+  pollTimer = null;
   clearInterval(tickTimer);
   tickTimer = null;
 }
@@ -469,11 +486,16 @@ els.changeOrder.addEventListener('click', async () => {
   els.input.focus();
 });
 
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible' || !order) return;
-  refresh();
-  if (!events || events.readyState === EventSource.CLOSED) startLive();
-  if (keepOpenReason && order.status === 'preparing') requestWakeLock();
+document.addEventListener('visibilitychange', async () => {
+  if (!order) return;
+  if (document.visibilityState !== 'visible') {
+    clearTimeout(pollTimer); // no checks while the phone is locked or the tab is in the background
+    return;
+  }
+  if (!tickTimer) return; // tracking stopped (order expired)
+  await refresh();
+  schedulePoll();
+  if (keepOpenReason && order?.status === 'preparing') requestWakeLock();
 });
 
 if (platform.pushSupported) {
