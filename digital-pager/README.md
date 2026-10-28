@@ -152,3 +152,4 @@ public/css/styles.css
 - The staff PIN is a simple shared secret per branch. Fine for a pilot; add real accounts before selling to many restaurants.
 - The page is English only. Arabic (right-to-left) is a natural next step; order numbers already accept Arabic digits.
 - Fonts load from Google Fonts. Self-host them if you want the page to work with no outside requests.
+<!-- deploy test -->
