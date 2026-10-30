@@ -20,6 +20,7 @@ const els = {
   readyMessage: $('ready-message'),
   pickupNote: $('pickup-note'),
   stopSound: $('stop-sound'),
+  testSound: $('test-sound'),
   alerts: $('alerts'),
   notifyBtn: $('notify-btn'),
   notifyHelp: $('notify-help'),
@@ -69,7 +70,6 @@ let refreshing = false;
 let tickTimer = null;
 let alertsState = 'idle';
 let keepOpenReason = null;
-let audio = null;
 let ringTimer = null;
 let wakeLock = null;
 let alertedFor = null;
@@ -297,6 +297,8 @@ function setAlertsState(state) {
   els.notifyBtn.disabled = Boolean(c.disabled);
   els.notifyHelp.textContent = c.help;
   els.notifyHelp.hidden = !c.help;
+  // The page's own beep matters whenever it isn't a push notification doing the alerting.
+  els.testSound.hidden = !['unsupported', 'denied', 'keep-open-on', 'error'].includes(state);
   els.iosHowto.hidden = !(platform.iOS && !platform.standalone && !platform.pushSupported && (state === 'unsupported' || state === 'keep-open-on'));
 }
 
@@ -428,27 +430,106 @@ function releaseWakeLock() {
   wakeLock = null;
 }
 
-// Browsers only allow sound after a tap, so every button tap "unlocks" audio for later.
-function unlockAudio() {
+// ---------- Sound ----------
+// Built around how Safari on iPhone handles sound in a web page:
+//  1. Sound may only start after the person taps the page. So the first tap anywhere
+//     (typing the number and tapping Track counts) prepares the two players below.
+//  2. Web Audio is muted by the silent switch, but a normal <audio> element still plays.
+//     So the alert plays through an <audio> element, with Web Audio as the backup.
+//     Safari lets an <audio> element play later only if a tap started it once, so it's
+//     started muted during that first tap and paused straight away.
+//  3. Safari can pause Web Audio by itself ("interrupted"), so it's resumed before each beep.
+// navigator.audioSession (iOS 17+) is set to 'playback' only while ringing, so the alert
+// plays in silent mode without cutting off the person's music when they first tap.
+
+const ALERT_SOUND = '/sounds/ready.wav';
+let alarmEl = null; // <audio> element
+let alarmWarm = 'cold'; // 'cold' | 'warming' | 'warm': whether a tap has started it
+let beepCount = 0;
+let audio = null; // Web Audio context (backup)
+
+function setAudioSessionType(type) {
   try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    if (!audio) audio = new Ctx();
-    if (audio.state === 'suspended') audio.resume();
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    gain.gain.value = 0.0001;
-    osc.connect(gain).connect(audio.destination);
-    osc.start();
-    osc.stop(audio.currentTime + 0.02);
+    if (navigator.audioSession) navigator.audioSession.type = type;
   } catch {
-    audio = null;
+    /* not supported */
   }
 }
 
-function chime() {
+// Call from every tap. Safe to call any number of times.
+function prepareSound() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) {
+      if (!audio) audio = new Ctx();
+      if (audio.state !== 'running') {
+        audio.resume().catch(() => {});
+        // A near-silent blip started inside the tap is what lets this context play later.
+        const osc = audio.createOscillator();
+        const gain = audio.createGain();
+        gain.gain.value = 0.0001;
+        osc.connect(gain).connect(audio.destination);
+        osc.start();
+        osc.stop(audio.currentTime + 0.02);
+      }
+    }
+  } catch {
+    audio = null;
+  }
+
+  try {
+    if (!alarmEl) {
+      alarmEl = new Audio(ALERT_SOUND);
+      alarmEl.preload = 'auto';
+      alarmEl.setAttribute('x-webkit-airplay', 'deny');
+    }
+    if (alarmWarm === 'cold' && !ringTimer) {
+      alarmWarm = 'warming';
+      const seq = beepCount;
+      alarmEl.muted = true;
+      Promise.resolve(alarmEl.play())
+        .then(() => {
+          if (beepCount === seq) {
+            alarmEl.pause();
+            alarmEl.currentTime = 0;
+          }
+          alarmWarm = 'warm';
+        })
+        .catch(() => {
+          alarmWarm = 'cold'; // try again on the next tap
+        })
+        .finally(() => {
+          if (beepCount === seq) alarmEl.muted = false;
+        });
+    }
+  } catch {
+    alarmEl = null;
+  }
+}
+
+// One beep: the <audio> element if it's allowed to play, otherwise Web Audio.
+function beepOnce() {
+  beepCount++;
+  if (alarmEl) {
+    try {
+      alarmEl.muted = false;
+      alarmEl.currentTime = 0;
+      Promise.resolve(alarmEl.play())
+        .then(() => {
+          alarmWarm = 'warm';
+        })
+        .catch(() => webAudioBeep());
+      return;
+    } catch {
+      /* fall through to Web Audio */
+    }
+  }
+  webAudioBeep();
+}
+
+function webAudioBeep() {
   if (!audio) return;
-  if (audio.state === 'suspended') audio.resume();
+  if (audio.state !== 'running') audio.resume().catch(() => {}); // 'suspended' or Safari's 'interrupted'
   const t0 = audio.currentTime + 0.03;
   [
     [1046.5, 0],
@@ -469,24 +550,46 @@ function chime() {
   });
 }
 
+const RING_TIMES = 8;
+const RING_EVERY = 3500;
+const BEEP_LENGTH = 1500; // the sound is 0.8 s; a little extra so the last one is never cut off
+let ringEndTimer = null;
+
 function ring() {
   stopRinging();
+  setAudioSessionType('playback');
   let count = 0;
   const once = () => {
-    chime();
-    navigator.vibrate?.([300, 120, 300, 120, 300]);
-    if (++count >= 8) stopRinging();
+    beepOnce();
+    navigator.vibrate?.([300, 120, 300, 120, 300]); // Android only; iPhones ignore it
+    if (++count >= RING_TIMES) {
+      // Done: stop scheduling beeps, but let the last one finish before tidying up.
+      clearInterval(ringTimer);
+      ringTimer = null;
+      ringEndTimer = setTimeout(() => {
+        ringEndTimer = null;
+        setAudioSessionType('auto');
+        els.stopSound.hidden = true;
+      }, BEEP_LENGTH);
+    }
   };
+  ringTimer = setInterval(once, RING_EVERY);
   once();
-  ringTimer = setInterval(once, 3500);
-  els.stopSound.hidden = !audio;
+  els.stopSound.hidden = !(alarmEl || audio);
 }
 
+// Silence a ring right away ("Stop the sound", or the order moved on). Does nothing
+// when nothing is ringing, so routine status checks never touch the sound.
 function stopRinging() {
-  if (ringTimer) {
-    clearInterval(ringTimer);
-    ringTimer = null;
+  const ringing = Boolean(ringTimer || ringEndTimer);
+  clearInterval(ringTimer);
+  ringTimer = null;
+  clearTimeout(ringEndTimer);
+  ringEndTimer = null;
+  if (ringing) {
     navigator.vibrate?.(0);
+    if (alarmEl && !alarmEl.paused) alarmEl.pause();
+    setAudioSessionType('auto');
   }
   els.stopSound.hidden = true;
 }
@@ -500,9 +603,12 @@ function onReady() {
 
 // ---------- Events ----------
 
+// Any tap or key press anywhere prepares sound (Safari only allows it after one).
+['click', 'touchend', 'keydown'].forEach((type) => document.addEventListener(type, prepareSound, true));
+
 els.form.addEventListener('submit', (e) => {
   e.preventDefault();
-  unlockAudio();
+  prepareSound();
   track(els.input.value);
 });
 
@@ -511,13 +617,18 @@ els.input.addEventListener('input', () => {
 });
 
 els.notifyBtn.addEventListener('click', () => {
-  unlockAudio();
+  prepareSound();
   if (alertsState === 'idle' || alertsState === 'error') enablePush();
   else if (alertsState === 'denied') enableKeepOpen('denied');
   else if (alertsState === 'unsupported') enableKeepOpen('unsupported');
 });
 
 els.stopSound.addEventListener('click', stopRinging);
+
+els.testSound.addEventListener('click', () => {
+  prepareSound();
+  if (!ringTimer) beepOnce();
+});
 
 els.changeOrder.addEventListener('click', async () => {
   const old = order;

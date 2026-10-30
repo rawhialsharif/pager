@@ -354,15 +354,19 @@ input {
   color: var(--ink-soft);
 }
 
-.alerts[data-state="on"] .btn,
-.alerts[data-state="keep-open-on"] .btn {
+.alerts .btn-quiet {
+  justify-self: start;
+}
+
+.alerts[data-state="on"] #notify-btn,
+.alerts[data-state="keep-open-on"] #notify-btn {
   background: var(--ready-soft);
   color: var(--ready);
 }
 
 @media (prefers-color-scheme: dark) {
-  .alerts[data-state="on"] .btn,
-  .alerts[data-state="keep-open-on"] .btn {
+  .alerts[data-state="on"] #notify-btn,
+  .alerts[data-state="keep-open-on"] #notify-btn {
     color: #7fe0b8;
   }
 }

@@ -56,7 +56,30 @@ Safari only delivers web push to sites added to the Home Screen (iOS 16.4 or lat
 - **In a Safari tab (what a scan opens):** the page offers **Beep when it's ready**. It keeps the screen awake and beeps when the order is ready, as long as the page stays open. It also shows a short guide for adding the page to the Home Screen.
 - **As a Home Screen web app:** full notifications with sound, even with the screen locked, exactly like Android. No Apple Developer account is needed, and no server changes: the same code and push keys work for both.
 
-### Test it on your iPhone
+### How the beep works in a Safari tab
+
+Safari only plays sound after the person has tapped the page, and mutes Web Audio when the silent switch is on. So:
+
+- The first tap anywhere (typing the number and tapping **Track order** counts) quietly prepares the sound.
+- The alert plays `public/sounds/ready.wav` through an `<audio>` element, which plays even in silent mode. On iOS 17+ the page also sets `navigator.audioSession.type = 'playback'` while ringing. If the element isn't allowed to play, it falls back to Web Audio, resuming it first if Safari paused it ("interrupted").
+- It beeps 8 times, 3.5 seconds apart, until the customer taps **Stop the sound**. The beep pauses music that's playing.
+- **Play a test sound** lets customers check their volume.
+- The server answers range requests (`Range: bytes=0-1`), which Safari uses to load audio.
+
+What it can't do: beep while the phone is locked or Safari is in the background, or beep on a page that was reopened and hasn't been tapped since (one tap anywhere fixes that).
+
+`python3 tools/iphone-sound-check.py` runs 24 checks on the page in Chromium made to behave like Safari on an iPhone (needs `pip install playwright`). It can't replace a real iPhone; use the test below for that.
+
+### Test the beep on a real iPhone (3 minutes)
+
+1. On the staff dashboard, add order `90`.
+2. On the iPhone, in Safari (not a Home Screen icon), open the customer page, enter `90`, tap **Track order**, then **Beep when it's ready**.
+3. Tap **Play a test sound**. You should hear a two-tone chime. If not, turn the volume up.
+4. Leave the phone alone for 2 minutes. The screen should stay on.
+5. Mark `90` ready on the dashboard. Within 3 seconds the screen turns green and chimes every 3.5 seconds. Tap **Stop the sound**.
+6. Repeat with the silent switch on (or Silent Mode on the Action button), then with Low Power Mode on. Use a new order number each time.
+
+### Test notifications on your iPhone (Home Screen app)
 
 1. Start the server and tunnel as in "Test on your Android phone" above.
 2. On the iPhone, scan the QR code (or open `https://<your-tunnel>/r/demo-cafe`) in Safari.

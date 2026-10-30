@@ -168,6 +168,35 @@ test('pages render with the branch name', async () => {
   assert.equal(manifest.body.start_url, '/r/test-cafe');
 });
 
+test('the alert sound is served the way Safari needs (audio type, range requests)', async () => {
+  const full = await fetch(`${base}/sounds/ready.wav`);
+  assert.equal(full.status, 200);
+  assert.equal(full.headers.get('content-type'), 'audio/wav');
+  assert.equal(full.headers.get('accept-ranges'), 'bytes');
+  const bytes = Buffer.from(await full.arrayBuffer());
+  assert.equal(bytes.subarray(0, 4).toString(), 'RIFF');
+  assert.equal(bytes.subarray(8, 12).toString(), 'WAVE');
+
+  // Safari's first request for audio
+  const probe = await fetch(`${base}/sounds/ready.wav`, { headers: { Range: 'bytes=0-1' } });
+  assert.equal(probe.status, 206);
+  assert.equal(probe.headers.get('content-range'), `bytes 0-1/${bytes.length}`);
+  assert.deepEqual(Buffer.from(await probe.arrayBuffer()), bytes.subarray(0, 2));
+
+  const middle = await fetch(`${base}/sounds/ready.wav`, { headers: { Range: 'bytes=100-199' } });
+  assert.equal(middle.status, 206);
+  assert.deepEqual(Buffer.from(await middle.arrayBuffer()), bytes.subarray(100, 200));
+
+  const tail = await fetch(`${base}/sounds/ready.wav`, { headers: { Range: 'bytes=-10' } });
+  assert.deepEqual(Buffer.from(await tail.arrayBuffer()), bytes.subarray(bytes.length - 10));
+
+  const openEnded = await fetch(`${base}/sounds/ready.wav`, { headers: { Range: `bytes=${bytes.length - 5}-` } });
+  assert.equal(openEnded.headers.get('content-length'), '5');
+
+  const past = await fetch(`${base}/sounds/ready.wav`, { headers: { Range: `bytes=${bytes.length}-` } });
+  assert.equal(past.status, 416);
+});
+
 test('static files cannot escape the public folder', async () => {
   for (const p of ['/..%2fserver.js', '/%2e%2e/server.js', '/js/..%2f..%2fserver.js', '/customer.html']) {
     assert.equal((await fetch(`${base}${p}`)).status, 404, p);

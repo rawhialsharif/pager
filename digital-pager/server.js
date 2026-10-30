@@ -77,6 +77,7 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
+  '.wav': 'audio/wav',
 };
 
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -183,14 +184,53 @@ function serveStatic(req, res, urlPath) {
   }
   if (!stat.isFile()) return false;
   const ext = path.extname(filePath);
-  const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': stat.size };
+  const headers = {
+    'Content-Type': MIME[ext] || 'application/octet-stream',
+    'Content-Length': stat.size,
+    'Accept-Ranges': 'bytes',
+  };
   // The service worker must never be cached long, or phones keep running an old one.
-  headers['Cache-Control'] = ext === '.png' ? 'public, max-age=86400' : 'no-cache';
+  headers['Cache-Control'] = ext === '.png' || ext === '.wav' ? 'public, max-age=86400' : 'no-cache';
   if (urlPath === '/sw.js') headers['Service-Worker-Allowed'] = '/';
+
+  // Range requests: Safari fetches audio in pieces (first "bytes=0-1") and won't play
+  // a sound file from a server that ignores them. One range per request is enough.
+  const range = parseRange(req.headers.range, stat.size);
+  if (range === 'invalid') {
+    res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
+    return res.end(), true;
+  }
+  if (range) {
+    headers['Content-Range'] = `bytes ${range.start}-${range.end}/${stat.size}`;
+    headers['Content-Length'] = range.end - range.start + 1;
+    res.writeHead(206, headers);
+    if (req.method === 'HEAD') return res.end(), true;
+    fs.createReadStream(filePath, range).pipe(res);
+    return true;
+  }
+
   res.writeHead(200, headers);
   if (req.method === 'HEAD') return res.end(), true;
   fs.createReadStream(filePath).pipe(res);
   return true;
+}
+
+// "bytes=0-1", "bytes=100-", "bytes=-500" -> { start, end } (inclusive). Anything else -> null
+// (send the whole file). A range starting past the end of the file -> 'invalid'.
+function parseRange(header, size) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(header ?? '').trim());
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  let start;
+  let end;
+  if (m[1] === '') {
+    start = Math.max(0, size - Number(m[2]));
+    end = size - 1;
+  } else {
+    start = Number(m[1]);
+    end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1);
+  }
+  if (start >= size || start > end) return 'invalid';
+  return { start, end };
 }
 
 // ---------- Routes ----------
